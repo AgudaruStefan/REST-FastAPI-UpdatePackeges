@@ -1,0 +1,35 @@
+image:
+  name: docker/compose:1.29.2
+services:
+  - name: docker:dind
+    alias: dind
+stages:
+  - build
+  - test
+variables:
+  IMAGE_BASE: $CI_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME
+  IMAGE: $IMAGE_BASE:latest
+before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+build:
+  stage: build
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    - docker-compose build --cache-from $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+test:
+  stage: test
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:latest
+    - docker-compose up -d
+    - export CONTAINER_ID=$(docker-compose ps -q api)
+    - docker ps
+    - docker-compose ps
+    - docker volume ls
+    - docker exec --tty $CONTAINER_ID poe migrate_test
+    - docker exec --tty $CONTAINER_ID poe test_api_gitlab
+    - docker exec --tty $CONTAINER_ID poe testunit
+    - docker-compose kill test_db
+    - docker-compose rm -f
+    - docker-compose up -d
+  allow_failure: false
